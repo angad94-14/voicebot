@@ -1,0 +1,22 @@
+[
+  {
+    "name": "अंगद बशानी",
+    "phone": "9823005900",
+    "loan_type": "व्यक्तिगत लोन",
+    "loan_amount": 50000,
+    "language": "Hindi",
+    "timestamp": "2025-05-29T16:16:50.076011",
+    "status": "new",
+    "detected_language": "Hindi"
+  },
+  {
+    "name": "अंगत बशानी",
+    "phone": "9823005900",
+    "loan_type": "व्यक्तिगत लोन",
+    "loan_amount": 50000,
+    "language": "Hindi",
+    "timestamp": "2025-05-29T16:24:24.697986",
+    "status": "new",
+    "detected_language": "Hindi"
+  }
+]
