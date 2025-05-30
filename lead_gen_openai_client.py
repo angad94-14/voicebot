@@ -69,7 +69,7 @@ if "tts_provider" not in st.session_state:
 
 # TTS Provider Configuration
 TTS_PROVIDERS = {
-    "auto": "Auto-select Best",
+    "auto": "Auto-select",
     "google": "Google Cloud TTS",
     "elevenlabs": "ElevenLabs",
     "openai": "OpenAI TTS"
@@ -77,6 +77,7 @@ TTS_PROVIDERS = {
 
 # Hindi voice configurations
 GOOGLE_HINDI_VOICES = {
+    "hi-IN-Chirp3-HD-Sadachbia": "Hindi Female (Chirp3-HD) - Most Natural",
     "hi-IN-Wavenet-A": "Hindi Female (WaveNet)",
     "hi-IN-Wavenet-B": "Hindi Male (WaveNet)",
     "hi-IN-Wavenet-C": "Hindi Female (WaveNet)",
@@ -131,10 +132,10 @@ def google_text_to_speech(text, language_hint="Hindi"):
     try:
         # Select voice based on language
         if language_hint == "Hindi":
-            voice_name = "hi-IN-Neural2-B"  # High-quality Hindi
+            voice_name = "hi-IN-Chirp3-HD-Sadachbia"  # High-quality Hindi
             language_code = "hi-IN"
         else:
-            voice_name = "en-IN-Neural2-A"  # Indian English voice
+            voice_name = "en-IN-Chirp3-HD-Puck"  # Indian English voice
             language_code = "en-IN"
 
         # Set up the synthesis input
@@ -351,7 +352,7 @@ def get_ai_response(user_message, conversation_history, detected_language):
         messages.append({"role": "user", "content": user_message})
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             functions=lead_capture_functions,
             function_call="auto",
@@ -501,27 +502,41 @@ if st.session_state.conversation and st.button("🗑️ Clear / साफ़ क
     st.session_state.current_lead = {}
     st.rerun()
 
-# Setup Instructions
-with st.expander("⚙️ Setup Instructions / सेटअप निर्देश"):
+# Sample User Journey
+with st.expander("🎯 Sample User Journey / नमूना यात्रा"):
     st.markdown("""
-    **Required Environment Variables:**
-    ```
-    OPENAI_API_KEY=your_openai_api_key_here
-    ```
+    **English User Journey:**
+    1. "What services do you offer?"
+    2. "Tell me about personal loans"
+    3. "What's the interest rate?"
+    4. "How much can I borrow?"
+    5. "What documents do I need?"
+    6. "I'm interested in a ₹25,000 loan"
+    7. "Yes, I want to apply"
+    8. [Provides name, phone, email when asked]
 
-    **Optional for Better Hindi TTS:**
-    ```
-    # Google Cloud TTS (Recommended for Hindi)
-    GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+    **Hindi User Journey / हिंदी यात्रा:**
+    1. "आप क्या सेवाएं देते हैं?"
+    2. "व्यक्तिगत लोन के बारे में बताएं"
+    3. "ब्याज दर क्या है?"
+    4. "कितना लोन मिल सकता है?"
+    5. "कौन से डॉक्यूमेंट चाहिए?"
+    6. "मुझे ₹25,000 का लोन चाहिए"
+    7. "हां, मैं अप्लाई करना चाहता हूं"
+    8. [नाम, फोन, ईमेल देता है]
 
-    # ElevenLabs (Best Quality)
-    ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
-    ```
+    **Mixed Language Journey:**
+    1. "What loan options हैं?"
+    2. "Personal loan ke लिए क्या करना होगा?"
+    3. "Interest rate kitna है?"
+    4. "I need ₹30,000 ka loan"
+    5. "Apply kaise करूं?"
 
-    **TTS Provider Comparison:**
-    - 🔵 **Google Cloud**: Best Hindi pronunciation, Neural2 voices
-    - ⚫ **ElevenLabs**: Most natural sounding, voice cloning
-    - ⚪ **OpenAI**: Fallback option, English-accented Hindi
+    **Account Lookup Journey:**
+    1. "Check my account balance"
+    2. "My account ID is demo123"
+    3. "When is my next payment due?"
+    4. "What's my loan status?"
     """)
 
 # Environment check
