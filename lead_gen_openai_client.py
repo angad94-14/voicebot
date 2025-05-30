@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 import base64
 from dotenv import load_dotenv
+import requests
+from google.cloud import texttospeech
 
 # Load environment variables
 load_dotenv()
@@ -27,7 +29,29 @@ def get_openai_client():
     return openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+# Initialize Google Cloud TTS client
+@st.cache_resource
+def get_google_tts_client():
+    try:
+        # Initialize Google Cloud TTS client
+        # Requires GOOGLE_APPLICATION_CREDENTIALS environment variable
+        return texttospeech.TextToSpeechClient()
+    except Exception as e:
+        st.warning("Google Cloud TTS not configured. Using OpenAI TTS as fallback.")
+        return None
+
+
+# Initialize ElevenLabs client (optional)
+def get_elevenlabs_headers():
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if api_key:
+        return {"Accept": "audio/mpeg", "xi-api-key": api_key}
+    return None
+
+
 client = get_openai_client()
+google_tts_client = get_google_tts_client()
+elevenlabs_headers = get_elevenlabs_headers()
 
 # Initialize session state
 if "conversation" not in st.session_state:
@@ -40,10 +64,36 @@ if "leads" not in st.session_state:
     st.session_state.leads = []
 if "current_lead" not in st.session_state:
     st.session_state.current_lead = {}
-if "language_preference" not in st.session_state:
-    st.session_state.language_preference = "English"
+if "tts_provider" not in st.session_state:
+    st.session_state.tts_provider = "auto"
 
-# Hindi-English financial services knowledge
+# TTS Provider Configuration
+TTS_PROVIDERS = {
+    "auto": "Auto-select Best",
+    "google": "Google Cloud TTS",
+    "elevenlabs": "ElevenLabs",
+    "openai": "OpenAI TTS"
+}
+
+# Hindi voice configurations
+GOOGLE_HINDI_VOICES = {
+    "hi-IN-Wavenet-A": "Hindi Female (WaveNet)",
+    "hi-IN-Wavenet-B": "Hindi Male (WaveNet)",
+    "hi-IN-Wavenet-C": "Hindi Female (WaveNet)",
+    "hi-IN-Wavenet-D": "Hindi Male (WaveNet)",
+    "hi-IN-Neural2-A": "Hindi Female (Neural2)",
+    "hi-IN-Neural2-B": "Hindi Male (Neural2)",
+    "hi-IN-Neural2-C": "Hindi Female (Neural2)",
+    "hi-IN-Neural2-D": "Hindi Male (Neural2)",
+
+}
+
+ELEVENLABS_HINDI_VOICES = {
+    "pNInz6obpgDQGcFmaJgB": "Hindi Female (Adam)",
+    "EXAVITQu4vr4xnSDxMaL": "Hindi Male (Sarah)"
+}
+
+# System prompts (same as before)
 HINDI_SYSTEM_PROMPT = """You are a helpful bilingual voice assistant for a financial services company in India. You can communicate in both Hindi and English based on user preference.
 
 Our services include:
@@ -52,40 +102,157 @@ Our services include:
 - व्यापारिक लोन (Business Loans): व्यापार विस्तार के लिए फंडिंग / Funding for business expansion  
 - ऋण समेकन (Debt Consolidation): कई ऋणों को एक भुगतान में मिलाना / Combine multiple debts into one payment
 
-Key eligibility / पात्रता मापदंड:
-- 18+ वर्ष आयु / 18+ years old
-- भारतीय निवासी / Indian resident  
-- स्थिर आय / Steady income
-- क्रेडिट स्कोर 600+ / Credit score 600+
-
 IMPORTANT INSTRUCTIONS:
 - Respond in the same language the user speaks (Hindi or English)
-- If user speaks Hindi, respond in Hindi with some English financial terms
-- If user speaks English, respond in English
 - Keep responses conversational and under 2 sentences for voice delivery
 - For Hindi speakers, use familiar terms like "लोन", "ब्याज दर", "किस्त"
 - When someone shows interest, offer to collect their information
 - Be respectful and use appropriate Hindi honorifics like "जी", "आप"
+"""
 
-Available demo account IDs for testing: demo123, biz456, consol789"""
 
-ENGLISH_SYSTEM_PROMPT = """You are a helpful voice assistant for a financial services company specializing in loans.
+def detect_language(text):
+    """Enhanced language detection"""
+    hindi_chars = sum(1 for char in text if ord(char) >= 0x0900 and ord(char) <= 0x097F)
+    total_chars = len([c for c in text if c.isalpha()])
 
-Our services include:
-- Personal Loans: Unsecured loans up to $50,000 for various needs
-- Business Loans: Funding solutions for business growth and expansion  
-- Debt Consolidation: Combine multiple debts into one manageable payment
+    if total_chars == 0:
+        return "English"
 
-Key eligibility requirements:
-- 18+ years old, US/India resident
-- Steady income, Credit score 600+
-- Debt-to-income ratio below 40%
+    hindi_ratio = hindi_chars / total_chars
+    return "Hindi" if hindi_ratio > 0.3 else "English"
 
-Keep responses conversational and under 2 sentences for voice delivery.
-When someone shows interest in applying, offer to collect their information.
-Available demo account IDs: demo123, biz456, consol789"""
 
-# Function definitions for OpenAI
+def google_text_to_speech(text, language_hint="Hindi"):
+    """Convert text to speech using Google Cloud TTS with high-quality Hindi voices"""
+    if not google_tts_client:
+        return None
+
+    try:
+        # Select voice based on language
+        if language_hint == "Hindi":
+            voice_name = "hi-IN-Neural2-B"  # High-quality Hindi
+            language_code = "hi-IN"
+        else:
+            voice_name = "en-IN-Neural2-A"  # Indian English voice
+            language_code = "en-IN"
+
+        # Set up the synthesis input
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+
+        # Build the voice request
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=language_code,
+            name=voice_name
+        )
+
+        # Select the audio config
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=1.0,  # Normal speed
+            pitch=0.0  # Normal pitch
+        )
+
+        # Perform the text-to-speech request
+        response = google_tts_client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+
+        # Save to temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        temp_file.write(response.audio_content)
+        temp_file.close()
+
+        return temp_file.name
+
+    except Exception as e:
+        st.error(f"Google TTS failed: {str(e)}")
+        return None
+
+
+def elevenlabs_text_to_speech(text, language_hint="Hindi"):
+    """Convert text to speech using ElevenLabs API"""
+    if not elevenlabs_headers:
+        return None
+
+    try:
+        # Select voice based on language
+        voice_id = "pNInz6obpgDQGcFmaJgB" if language_hint == "Hindi" else "21m00Tcm4TlvDq8ikWAM"
+
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+
+        data = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.5
+            }
+        }
+
+        response = requests.post(url, json=data, headers=elevenlabs_headers)
+
+        if response.status_code == 200:
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+            temp_file.write(response.content)
+            temp_file.close()
+            return temp_file.name
+        else:
+            st.error(f"ElevenLabs TTS failed: {response.status_code}")
+            return None
+
+    except Exception as e:
+        st.error(f"ElevenLabs TTS failed: {str(e)}")
+        return None
+
+
+def openai_text_to_speech(text, language_hint="Hindi"):
+    """Fallback OpenAI TTS"""
+    try:
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice="nova",
+            input=text
+        )
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        response.stream_to_file(temp_file.name)
+        return temp_file.name
+    except Exception as e:
+        st.error(f"OpenAI TTS failed: {str(e)}")
+        return None
+
+
+def smart_text_to_speech(text, language_hint="Hindi"):
+    """Intelligently choose the best TTS provider based on language and availability"""
+
+    if st.session_state.tts_provider == "google" and google_tts_client:
+        return google_text_to_speech(text, language_hint)
+    elif st.session_state.tts_provider == "elevenlabs" and elevenlabs_headers:
+        return elevenlabs_text_to_speech(text, language_hint)
+    elif st.session_state.tts_provider == "openai":
+        return openai_text_to_speech(text, language_hint)
+    else:  # Auto-select
+        # Priority: Google Cloud (best Hindi) > ElevenLabs > OpenAI
+        if language_hint == "Hindi":
+            if google_tts_client:
+                return google_text_to_speech(text, language_hint)
+            elif elevenlabs_headers:
+                return elevenlabs_text_to_speech(text, language_hint)
+            else:
+                return openai_text_to_speech(text, language_hint)
+        else:  # English
+            if elevenlabs_headers:
+                return elevenlabs_text_to_speech(text, language_hint)
+            elif google_tts_client:
+                return google_text_to_speech(text, language_hint)
+            else:
+                return openai_text_to_speech(text, language_hint)
+
+
+# Lead capture functions (same as before)
 lead_capture_functions = [
     {
         "name": "capture_lead_info",
@@ -102,25 +269,8 @@ lead_capture_functions = [
             },
             "required": ["name", "phone", "loan_type"]
         }
-    },
-    {
-        "name": "lookup_account_info",
-        "description": "Look up account information using account ID",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "account_id": {"type": "string", "description": "Account ID or access code"}
-            },
-            "required": ["account_id"]
-        }
     }
 ]
-
-
-def detect_language(text):
-    """Simple language detection"""
-    hindi_chars = any(ord(char) >= 0x0900 and ord(char) <= 0x097F for char in text)
-    return "Hindi" if hindi_chars else "English"
 
 
 def handle_function_call(function_name, arguments, detected_language):
@@ -135,9 +285,6 @@ def handle_function_call(function_name, arguments, detected_language):
         st.session_state.leads.append(lead_data)
         st.session_state.current_lead = lead_data
 
-        # Save to file
-        save_leads_to_file()
-
         name = arguments.get('name', '')
         loan_type = arguments.get('loan_type', 'loan')
 
@@ -146,39 +293,7 @@ def handle_function_call(function_name, arguments, detected_language):
         else:
             return f"Thank you {name}! I've captured your information for a {loan_type}. A loan advisor will contact you within 24 hours."
 
-    elif function_name == "lookup_account_info":
-        account_id = arguments.get("account_id", "").lower()
-        # Mock account data
-        accounts = {
-            "demo123": {
-                "balance": 18750,
-                "payment": 485,
-                "due_date": "2025-06-15"
-            }
-        }
-
-        account = accounts.get(account_id)
-        if account:
-            if detected_language == "Hindi":
-                return f"आपका खाता विवरण: वर्तमान शेष ₹{account['balance']:,}, अगली किस्त ₹{account['payment']} दिनांक {account['due_date']} को देनी है।"
-            else:
-                return f"Your account info: Current balance ₹{account['balance']:,}, next payment ₹{account['payment']} due on {account['due_date']}."
-        else:
-            if detected_language == "Hindi":
-                return "खुशी! इस आईडी से कोई खाता नहीं मिला। कृपया अपना खाता आईडी जांचें।"
-            else:
-                return "Sorry! I couldn't find an account with that ID. Please check your account ID."
-
     return "I'm sorry, I couldn't process that request."
-
-
-def save_leads_to_file():
-    """Save leads to JSON file"""
-    try:
-        with open('captured_leads.json', 'w', encoding='utf-8') as f:
-            json.dump(st.session_state.leads, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        pass  # Silent fail for POC
 
 
 def record_audio(duration=5, sample_rate=16000):
@@ -210,11 +325,10 @@ def transcribe_audio(audio_file_path, language_hint=None):
     """Convert speech to text using OpenAI Whisper with language hint"""
     try:
         with open(audio_file_path, "rb") as audio_file:
-            # Add language parameter for better Hindi recognition
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,
-                language="hi" if language_hint == "Hindi" else None  # Hindi language code
+                language="hi" if language_hint == "Hindi" else None
             )
         return transcript.text
     except Exception as e:
@@ -225,17 +339,15 @@ def transcribe_audio(audio_file_path, language_hint=None):
 def get_ai_response(user_message, conversation_history, detected_language):
     """Get response from OpenAI GPT-4 with language awareness"""
     try:
-        # Choose system prompt based on detected language
-        system_prompt = HINDI_SYSTEM_PROMPT if detected_language == "Hindi" else ENGLISH_SYSTEM_PROMPT
+        system_prompt = HINDI_SYSTEM_PROMPT
 
         messages = [{"role": "system", "content": system_prompt}]
 
         # Add conversation history
-        for msg in conversation_history[-6:]:  # Keep last 6 messages for context
+        for msg in conversation_history[-6:]:
             messages.append({"role": "user", "content": msg["user"]})
             messages.append({"role": "assistant", "content": msg["assistant"]})
 
-        # Add current message
         messages.append({"role": "user", "content": user_message})
 
         response = client.chat.completions.create(
@@ -249,7 +361,6 @@ def get_ai_response(user_message, conversation_history, detected_language):
 
         message = response.choices[0].message
 
-        # Handle function calls
         if message.function_call:
             function_name = message.function_call.name
             arguments = json.loads(message.function_call.arguments)
@@ -263,23 +374,6 @@ def get_ai_response(user_message, conversation_history, detected_language):
             return "क्षमा करें, मुझे आपका अनुरोध प्रोसेस करने में कुछ समस्या हो रही है।"
         else:
             return "I'm sorry, I'm having trouble processing your request right now."
-
-
-def text_to_speech(text, language_hint=None):
-    """Convert text to speech - note: OpenAI TTS may not sound natural for Hindi"""
-    try:
-        response = client.audio.speech.create(
-            model="tts-1",
-            voice="nova",  # Best voice for multilingual
-            input=text
-        )
-
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        response.stream_to_file(temp_file.name)
-        return temp_file.name
-    except Exception as e:
-        st.error(f"Text-to-speech failed: {str(e)}")
-        return None
 
 
 def play_audio_in_browser(audio_file_path):
@@ -301,20 +395,31 @@ def play_audio_in_browser(audio_file_path):
 
 # Main UI
 st.title("🎙️ Voice Loan Assistant / वॉइस लोन असिस्टेंट")
-st.markdown("**Ask me about loans in Hindi or English! / हिंदी या अंग्रेजी में लोन के बारे में पूछें!**")
+st.markdown("**Professional Hindi TTS with multiple provider support!**")
 
-# Language preference selector
+# TTS Provider Configuration
 col1, col2 = st.columns([2, 1])
 with col1:
-    st.session_state.language_preference = st.selectbox(
-        "Preferred Language / भाषा चुनें:",
-        ["Auto-detect", "English", "Hindi / हिंदी"],
+    st.session_state.tts_provider = st.selectbox(
+        "TTS Provider / TTS प्रदाता:",
+        list(TTS_PROVIDERS.keys()),
+        format_func=lambda x: TTS_PROVIDERS[x],
         index=0
     )
 
 with col2:
-    if st.session_state.language_preference == "Hindi / हिंदी":
-        st.info("⚠️ TTS may sound English-accented")
+    # Show provider status
+    if st.session_state.tts_provider == "google" or st.session_state.tts_provider == "auto":
+        if google_tts_client:
+            st.success("✅ Google Cloud")
+        else:
+            st.warning("⚠️ Google Cloud - Not configured")
+
+    if st.session_state.tts_provider == "elevenlabs" or st.session_state.tts_provider == "auto":
+        if elevenlabs_headers:
+            st.success("✅ ElevenLabs")
+        else:
+            st.info("⚠️ ElevnLabs - Not Configured")
 
 # Voice interaction section
 col1, col2 = st.columns([1, 1])
@@ -337,31 +442,21 @@ with col2:
                 temp_audio_path = save_audio_to_temp(st.session_state.audio_data)
 
                 if temp_audio_path:
-                    # Determine language hint for Whisper
-                    language_hint = None
-                    if st.session_state.language_preference == "Hindi / हिंदी":
-                        language_hint = "Hindi"
-
-                    user_text = transcribe_audio(temp_audio_path, language_hint)
+                    user_text = transcribe_audio(temp_audio_path)
 
                     if user_text:
-                        # Detect actual language used
                         detected_language = detect_language(user_text)
-                        if st.session_state.language_preference == "Auto-detect":
-                            detected_language = detect_language(user_text)
-                        elif st.session_state.language_preference == "Hindi / हिंदी":
-                            detected_language = "Hindi"
-                        else:
-                            detected_language = "English"
-
                         ai_response = get_ai_response(user_text, st.session_state.conversation, detected_language)
-                        tts_audio_path = text_to_speech(ai_response, detected_language)
+
+                        # Use smart TTS selection
+                        tts_audio_path = smart_text_to_speech(ai_response, detected_language)
 
                         st.session_state.conversation.append({
                             "user": user_text,
                             "assistant": ai_response,
                             "timestamp": datetime.now().strftime("%H:%M:%S"),
-                            "language": detected_language
+                            "language": detected_language,
+                            "tts_provider": st.session_state.tts_provider
                         })
 
                         if tts_audio_path:
@@ -393,41 +488,40 @@ if st.session_state.conversation:
             col1, col2 = st.columns([1, 4])
             with col1:
                 lang_flag = "🇮🇳" if msg.get('language') == 'Hindi' else "🇺🇸"
-                st.markdown(f"**{msg['timestamp']}** {lang_flag}")
+                provider_icon = "🔵" if msg.get('tts_provider') == 'google' else "⚫"
+                st.markdown(f"**{msg['timestamp']}** {lang_flag} {provider_icon}")
             with col2:
                 st.markdown(f"**You:** {msg['user']}")
                 st.markdown(f"**Assistant:** {msg['assistant']}")
             st.markdown("")
 
 # Control buttons
-col1, col2 = st.columns([1, 1])
-with col1:
-    if st.session_state.conversation and st.button("🗑️ Clear / साफ़ करें"):
-        st.session_state.conversation = []
-        st.session_state.current_lead = {}
-        st.rerun()
+if st.session_state.conversation and st.button("🗑️ Clear / साफ़ करें"):
+    st.session_state.conversation = []
+    st.session_state.current_lead = {}
+    st.rerun()
 
-# Instructions
-with st.expander("ℹ️ How to Use / उपयोग करने का तरीका"):
+# Setup Instructions
+with st.expander("⚙️ Setup Instructions / सेटअप निर्देश"):
     st.markdown("""
-    **English Instructions:**
-    1. Select your preferred language or use auto-detect
-    2. Click "Start Recording" and speak clearly for 5-10 seconds
-    3. Click "Process Voice" to get AI response
-    4. The assistant will respond in the same language you spoke
+    **Required Environment Variables:**
+    ```
+    OPENAI_API_KEY=your_openai_api_key_here
+    ```
 
-    **हिंदी निर्देश:**
-    1. अपनी पसंदीदा भाषा चुनें या ऑटो-डिटेक्ट का उपयोग करें
-    2. "रिकॉर्डिंग शुरू करें" पर क्लिक करें और 5-10 सेकंड स्पष्ट रूप से बोलें
-    3. AI उत्तर पाने के लिए "आवाज़ प्रोसेस करें" पर क्लिक करें
-    4. असिस्टेंट उसी भाषा में जवाब देगा जिसमें आपने बात की है
+    **Optional for Better Hindi TTS:**
+    ```
+    # Google Cloud TTS (Recommended for Hindi)
+    GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 
-    **Sample Questions / नमूना प्रश्न:**
-    - "What loan options do you have?" / "आपके पास कौन से लोन के विकल्प हैं?"
-    - "I need a personal loan" / "मुझे व्यक्तिगत लोन चाहिए"
-    - "Account ID demo123 ki jankari dijiye"
+    # ElevenLabs (Best Quality)
+    ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+    ```
 
-    **Note:** Hindi TTS may sound English-accented due to OpenAI limitations.
+    **TTS Provider Comparison:**
+    - 🔵 **Google Cloud**: Best Hindi pronunciation, Neural2 voices
+    - ⚫ **ElevenLabs**: Most natural sounding, voice cloning
+    - ⚪ **OpenAI**: Fallback option, English-accented Hindi
     """)
 
 # Environment check

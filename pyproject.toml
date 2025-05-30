@@ -16,6 +16,7 @@ python-dotenv = "^1.0.0"
 # Note: openai-agents needs to be installed separately via pip
 # Run: pip install openai-agents 'openai-agents[voice]'
 soundfile = "^0.13.1"
+google-cloud-texttospeech = "^2.27.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
