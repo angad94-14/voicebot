@@ -13,10 +13,24 @@ openai = "^1.3.0"
 numpy = "<2.1"
 sounddevice = "^0.4.6"
 python-dotenv = "^1.0.0"
-# Note: openai-agents needs to be installed separately via pip
-# Run: pip install openai-agents 'openai-agents[voice]'
 soundfile = "^0.13.1"
-google-cloud-texttospeech = "^2.27.0"
+# Google Cloud packages for enhanced Hindi TTS
+google-cloud-texttospeech = "^2.16.0"
+google-auth = "^2.17.0"
+# Real-time voice processing with Pipecat (LATEST VERSION)
+pipecat-ai = {extras = ["silero"], version = "^0.0.68"}
+# Additional real-time dependencies (LATEST VERSIONS)
+requests = "^2.31.0"
+websockets = "*"
+fastapi = "*"
+uvicorn = "*"
+pandas = "^2.0.0"
+plotly = "^5.17.0"
+deepgram-sdk = "^4.1.0"
+daily-python = "^0.19.1"
+torch = "^2.7.0"
+google-cloud-speech = "^2.32.0"
+google-genai = "^1.18.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
