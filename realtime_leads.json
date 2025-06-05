@@ -1,0 +1,24 @@
+[
+  {
+    "name": "Angad",
+    "phone": "98230590",
+    "loan_type": "Personal Loan",
+    "email": "AngadBashani@Gmail.com",
+    "loan_amount": 50000,
+    "language": "English",
+    "timestamp": "2025-06-04T17:21:50.726158",
+    "status": "new",
+    "session_id": "session_20250604_172054"
+  },
+  {
+    "name": "Angad",
+    "phone": "98230590",
+    "loan_type": "Business Loan",
+    "email": "angadbashani@gmail.com",
+    "loan_amount": 50000,
+    "language": "English",
+    "timestamp": "2025-06-05T10:35:40.229088",
+    "status": "new",
+    "session_id": "session_20250605_103400"
+  }
+]
