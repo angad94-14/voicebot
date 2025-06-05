@@ -31,5 +31,16 @@
     "timestamp": "2025-06-05T16:37:53.276509",
     "status": "new",
     "session_id": "session_20250605_163603"
+  },
+  {
+    "name": "अंगद साहनी",
+    "phone": "98230590500",
+    "loan_type": "Personal",
+    "email": "अंगदबसानी@gmail.com",
+    "loan_amount": 50000,
+    "language": "Hindi",
+    "timestamp": "2025-06-05T18:04:05.232724",
+    "status": "new",
+    "session_id": "session_20250605_180315"
   }
 ]
