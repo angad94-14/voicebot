@@ -12,7 +12,7 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.deepgram import DeepgramSTTService
-from pipecat.services.google.tts import GoogleTTSService
+from pipecat.services.google.tts import GoogleTTSService, Language
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.services.daily import DailyParams, DailyTransport
@@ -44,8 +44,6 @@ class LoanBusinessLogic:
 
         # Load your enhanced account data
         self.enhanced_accounts = self._load_enhanced_accounts()
-
-
 
     def _load_enhanced_accounts(self):
         """Load the same enhanced account data from your current app"""
@@ -123,21 +121,9 @@ class LoanBusinessLogic:
             }
         }
 
-    def detect_language(self, text):
-        """Language detection - now just a regular method"""
-        hindi_chars = sum(1 for char in text if ord(char) >= 0x0900 and ord(char) <= 0x097F)
-        total_chars = len([c for c in text if c.isalpha()])
-
-        if total_chars == 0:
-            return "English"
-
-        hindi_ratio = hindi_chars / total_chars
-        return "Hindi" if hindi_ratio > 0.3 else "English"
-
     # Function implementations that will be called by Pipecat
-    async def capture_lead_info(self, name: str, phone: str, loan_type: str, email: str = "", loan_amount: float = 0,
-                                language: str = "English"):
-        """Function called by OpenAI when user wants to apply for loan"""
+    async def capture_lead_info(self, name: str, phone: str, loan_type: str, email: str = "", loan_amount: float = 0):
+        """Function called by OpenAI when user wants to apply for loan - English only"""
         try:
             lead_data = {
                 "name": name,
@@ -145,7 +131,7 @@ class LoanBusinessLogic:
                 "loan_type": loan_type,
                 "email": email,
                 "loan_amount": loan_amount,
-                "language": language,
+                "language": "English",
                 "timestamp": datetime.now().isoformat(),
                 "status": "new",
                 "session_id": self.session_id
@@ -157,41 +143,45 @@ class LoanBusinessLogic:
             # Save lead to file
             self._save_lead_to_file(lead_data)
 
-            # Return response based on language
-            if language == "Hindi":
-                return f"धन्यवाद {name} जी! हमारा एडवाइजर जल्दी ही आपको कॉल करेगा।"
-            else:
-                return f"Thank you {name}! Our advisor will call you soon."
+            # Return conversational response
+            return f"Perfect, {name}! I've got your details. Someone from our team will reach out within 24 hours. They'll help you with everything you need for your {loan_type.lower()}."
 
         except Exception as e:
             logger.error(f"Error capturing lead: {e}")
-            return "Sorry, there was an error. Please try again."
+            return "Oh, something went wrong on my end. Could you try that again?"
 
     async def lookup_account_info(self, account_id: str, info_type: str = "balance"):
-        """Function called by OpenAI when user wants account information"""
+        """Function called by OpenAI when user wants account information - English only"""
         try:
             account_id = account_id.lower()
             account = self.enhanced_accounts["accounts"].get(account_id)
 
             if not account:
-                return "Account not found. Please check your account ID."
+                return "Hmm, I can't find that account. Could you double-check the ID for me?"
 
             customer = account["customer_info"]
             loan = account["loan_details"]
 
+            # Handle different types of information requests - conversational tone
             if info_type == "balance":
-                return f"Hi {customer['name']}, your current balance is ₹{loan['current_balance']:,}."
+                return f"Hey {customer['name'].split()[0]}, you've got ₹{loan['current_balance']:,} left on your loan."
             elif info_type == "payment":
-                return f"Your next payment of ₹{loan['monthly_emi']:,} is due on {loan['next_payment_date']}."
+                return f"Your next payment is ₹{loan['monthly_emi']:,} due on {loan['next_payment_date']}."
             elif info_type == "status":
-                return f"Your account status is: {loan['account_status']}"
+                return f"Good news! Your account is {loan['account_status'].lower()}."
+            elif info_type == "interest":
+                return f"You're at {loan['interest_rate']} annual interest rate."
+            elif info_type == "emi":
+                return f"Your EMI is ₹{loan['monthly_emi']:,} monthly, with {loan['remaining_payments']} payments left."
+            elif info_type == "history":
+                return f"You started with ₹{loan['original_amount']:,}, now at ₹{loan['current_balance']:,}. Just {loan['remaining_payments']} payments to go!"
             else:
-                # Full details
-                return f"Hi {customer['name']}, Account: {loan['loan_type']}, Balance: ₹{loan['current_balance']:,}, Next payment: ₹{loan['monthly_emi']:,} on {loan['next_payment_date']}"
+                # Full details in conversational tone
+                return f"Alright {customer['name'].split()[0]}, here's the full picture: Your {loan['loan_type'].lower()} started at ₹{loan['original_amount']:,}. You're down to ₹{loan['current_balance']:,} with {loan['remaining_payments']} payments left. Next one's ₹{loan['monthly_emi']:,} on {loan['next_payment_date']}."
 
         except Exception as e:
             logger.error(f"Error looking up account: {e}")
-            return "Sorry, there was an error looking up your account."
+            return "Sorry, I'm having trouble pulling up your account right now."
 
     def _save_lead_to_file(self, lead_data):
         """Save lead to JSON file - with better error handling"""
@@ -252,10 +242,6 @@ def create_function_schemas():
             "loan_amount": {
                 "type": "number",
                 "description": "Desired loan amount (optional)"
-            },
-            "language": {
-                "type": "string",
-                "description": "Preferred language (Hindi/English)"
             }
         },
         required=["name", "phone", "loan_type"]
@@ -264,7 +250,7 @@ def create_function_schemas():
     # Account lookup function
     lookup_account_function = FunctionSchema(
         name="lookup_account_info",
-        description="Look up detailed account information using account ID. Use when customer asks about balance, payments, account status, or loan details.",
+        description="Look up detailed account information using account ID. Use when customer asks about balance, payments, account status, loan details, interest rate, EMI, or any account information.",
         properties={
             "account_id": {
                 "type": "string",
@@ -272,8 +258,8 @@ def create_function_schemas():
             },
             "info_type": {
                 "type": "string",
-                "description": "Type of info requested: balance, payment, status, details",
-                "enum": ["balance", "payment", "status", "details"]
+                "description": "Type of info requested: balance, payment, status, details, interest, emi, history",
+                "enum": ["balance", "payment", "status", "details", "interest", "emi", "history"]
             }
         },
         required=["account_id"]
@@ -302,30 +288,43 @@ async def main():
         # Create function schemas
         tools = create_function_schemas()
 
-        # Set up system prompt with language detection instructions
-        system_prompt = """You are a helpful bilingual voice assistant for a financial services company in India. You can communicate in both Hindi and English based on user preference.
+        # Set up system prompt - Human-like, conversational tone
+        system_prompt = """You are Alex, a friendly loan advisor at a financial services company in India. You're having a natural phone conversation with customers.
 
-Our services include:
-हमारी सेवाएं / Our Services:
-- व्यक्तिगत लोन (Personal Loans): ₹50,000 तक का असुरक्षित लोन / Unsecured loans up to ₹50,000
-- व्यापारिक लोन (Business Loans): व्यापार विस्तार के लिए फंडिंग / Funding for business expansion  
-- ऋण समेकन (Debt Consolidation): कई ऋणों को एक भुगतान में मिलाना / Combine multiple debts into one payment
+PERSONALITY:
+- Warm, approachable, and genuinely helpful
+- Use casual but professional language
+- Sound like you're actually listening and care about their needs
+- React naturally to what they say ("Oh, I see", "Got it", "Sure thing")
+- Use contractions (you're, I'll, that's) for natural speech
 
-Available demo accounts: demo123 (Rajesh Kumar), biz456 (Priya's Fashion Store), consol789 (Amit Singh), new890 (Sunita Patel)
+SERVICES YOU OFFER:
+- Personal Loans: Quick unsecured loans up to ₹50,000
+- Business Loans: Help businesses grow and expand
+- Debt Consolidation: Simplify multiple payments into one
 
-CRITICAL REAL-TIME INSTRUCTIONS:
-- ALWAYS respond in maximum 8-10 words ONLY for natural conversation flow
-- Respond in the same language the user speaks (Hindi or English)
-- For Hindi speakers, use familiar terms like "लोन", "ब्याज दर", "किस्त"
-- When someone shows interest, use capture_lead_info function
-- For account queries, use lookup_account_info function
-- Be respectful and use "जी", "आप" in Hindi
-- Keep responses extremely brief for real-time voice delivery
+DEMO ACCOUNTS FOR TESTING:
+demo123 (Rajesh), biz456 (Priya's Store), consol789 (Amit), new890 (Sunita)
 
-When users express interest in loans, immediately call capture_lead_info.
-When users ask about account information, call lookup_account_info.
-Always detect the user's language and respond in the same language.
-"""
+CRITICAL VOICE CONVERSATION RULES:
+- Keep ALL responses under 15 words for natural flow
+- Sound conversational, not robotic
+- Use filler words occasionally ("um", "well", "so")
+- Ask one thing at a time
+- Use phrases like "What's your name?" not "May I have your name?"
+- Say "hang on" or "let me check" when looking up info
+- After function calls, just deliver the result naturally - DON'T repeat or paraphrase
+
+CONVERSATION FLOW:
+- Greet warmly: "Hey there! I'm Alex from QuickLoans"
+- When they want a loan: "Sure! What kind of loan you looking for?"
+- Get their details naturally, one at a time
+- For account lookups: "Let me pull that up for you"
+- End with: "Anything else I can help with?"
+
+IMPORTANT: When functions return information, that IS your response. Don't add to it or repeat it. Just move the conversation forward naturally.
+
+Remember: You're having a real conversation, not reading a script. Be human!"""
 
         # LLM Context with functions
         context = OpenAILLMContext(
@@ -343,7 +342,7 @@ Always detect the user's language and respond in the same language.
         # CRITICAL: Create context aggregator for proper conversation flow
         context_aggregator = llm.create_context_aggregator(context)
 
-        # NEW: Register function handlers using the modern approach
+        # Function Call Handler:
         async def handle_capture_lead(params: FunctionCallParams):
             """Modern function call handler for lead capture"""
             try:
@@ -351,7 +350,7 @@ Always detect the user's language and respond in the same language.
                 await params.result_callback(result)
             except Exception as e:
                 logger.error(f"Error in capture_lead_info: {e}")
-                await params.result_callback("Sorry, there was an error capturing your information.")
+                await params.result_callback("Oops, something went wrong. Let's try again?")
 
         async def handle_lookup_account(params: FunctionCallParams):
             """Modern function call handler for account lookup"""
@@ -360,7 +359,7 @@ Always detect the user's language and respond in the same language.
                 await params.result_callback(result)
             except Exception as e:
                 logger.error(f"Error in lookup_account_info: {e}")
-                await params.result_callback("Sorry, there was an error looking up your account.")
+                await params.result_callback("Having trouble with that account lookup. Give me a sec?")
 
         # Register functions with new method
         llm.register_function("capture_lead_info", handle_capture_lead)
@@ -374,7 +373,7 @@ Always detect the user's language and respond in the same language.
             stt = DeepgramSTTService(
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
                 model="nova-2",
-                language="hi-en",
+                language="en",  # English only
                 smart_format=True,
                 interim_results=True
             )
@@ -383,17 +382,17 @@ Always detect the user's language and respond in the same language.
             logger.error("❌ Deepgram API key required")
             return
 
-        # TTS Service
+        # TTS Service - English male Chirp voice
         tts = None
         if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
             tts = GoogleTTSService(
                 credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-                voice_name="hi-IN-Chirp3-HD-Sadachbia",
-                language_code="hi-IN",
-                speaking_rate=1.0,
-                pitch=0.0
+                voice_id="en-IN-Chirp3-HD-Charon",
+                params=GoogleTTSService.InputParams(
+                    language=Language.EN_IN
+                )
             )
-            logger.info("✅ Google Chirp3-HD TTS configured")
+            logger.info("✅ Google Chirp3-HD Male TTS configured")
         else:
             logger.error("❌ Google Cloud credentials required")
             return
@@ -412,7 +411,7 @@ Always detect the user's language and respond in the same language.
         transport = DailyTransport(
             room_url=os.getenv("DAILY_ROOM_URL") or "https://yourdomain.daily.co/simple-voice",
             token=os.getenv("DAILY_TOKEN"),
-            bot_name="Hindi Voice Loan Assistant",
+            bot_name="Alex - Loan Advisor",
             params=DailyParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
@@ -430,7 +429,7 @@ Always detect the user's language and respond in the same language.
             llm,  # LLM response with function calling
             tts,  # Text to speech
             context_aggregator.assistant(),  # Add assistant response to context
-            transport.output()  # Audio output to user
+            transport.output(),  # Audio output to user
         ])
 
         # Pipeline task
@@ -446,10 +445,10 @@ Always detect the user's language and respond in the same language.
         # Run the pipeline
         runner = PipelineRunner()
 
-        logger.info("🎙️ Real-Time Hindi Voice Loan Assistant Ready!")
-        logger.info("📞 Features: Hindi/English, Function Calling, Lead Capture")
-        logger.info("⚡ Using Pipecat's built-in function calling system")
-        logger.info("🚀 NO custom FrameProcessor - clean and simple!")
+        logger.info("🎙️ Real-Time English Voice Loan Assistant Ready!")
+        logger.info("👨‍💼 Voice: Alex (Chirp3-HD-Arcas - Natural Male Voice)")
+        logger.info("🗣️ Style: Conversational, Human-like responses")
+        logger.info("⚡ Features: Natural dialogue, Function calling, Lead capture")
 
         await runner.run(task)
 

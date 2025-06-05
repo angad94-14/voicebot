@@ -20,5 +20,16 @@
     "timestamp": "2025-06-05T10:35:40.229088",
     "status": "new",
     "session_id": "session_20250605_103400"
+  },
+  {
+    "name": "Angad Bashani",
+    "phone": "9823005900",
+    "loan_type": "Business Loan",
+    "email": "",
+    "loan_amount": 50000,
+    "language": "English",
+    "timestamp": "2025-06-05T16:37:53.276509",
+    "status": "new",
+    "session_id": "session_20250605_163603"
   }
 ]
