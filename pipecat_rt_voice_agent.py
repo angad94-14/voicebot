@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 class LoanBusinessLogic:
     """
-    NO FrameProcessor inheritance!
-    Regular Python class with business methods.
+    Simple class to handle business logic - NO FrameProcessor inheritance!
+    This is just a regular Python class with your business methods.
     """
 
     def __init__(self):
@@ -44,6 +44,7 @@ class LoanBusinessLogic:
 
         # Load your enhanced account data
         self.enhanced_accounts = self._load_enhanced_accounts()
+
 
 
     def _load_enhanced_accounts(self):
@@ -178,22 +179,15 @@ class LoanBusinessLogic:
             customer = account["customer_info"]
             loan = account["loan_details"]
 
-            # Handle different types of information requests
             if info_type == "balance":
                 return f"Hi {customer['name']}, your current balance is ₹{loan['current_balance']:,}."
             elif info_type == "payment":
                 return f"Your next payment of ₹{loan['monthly_emi']:,} is due on {loan['next_payment_date']}."
             elif info_type == "status":
                 return f"Your account status is: {loan['account_status']}"
-            elif info_type == "interest":
-                return f"Your interest rate is {loan['interest_rate']} per annum."
-            elif info_type == "emi":
-                return f"Your monthly EMI is ₹{loan['monthly_emi']:,} with {loan['remaining_payments']} payments remaining."
-            elif info_type == "history":
-                return f"Account opened with ₹{loan['original_amount']:,}, current balance ₹{loan['current_balance']:,}, {loan['remaining_payments']} payments left."
             else:
-                # Full details for any other request
-                return f"Hi {customer['name']}, here's your complete account info: {loan['loan_type']} of ₹{loan['original_amount']:,}, current balance ₹{loan['current_balance']:,}, monthly EMI ₹{loan['monthly_emi']:,}, interest rate {loan['interest_rate']}, next payment {loan['next_payment_date']}, status: {loan['account_status']}"
+                # Full details
+                return f"Hi {customer['name']}, Account: {loan['loan_type']}, Balance: ₹{loan['current_balance']:,}, Next payment: ₹{loan['monthly_emi']:,} on {loan['next_payment_date']}"
 
         except Exception as e:
             logger.error(f"Error looking up account: {e}")
@@ -270,7 +264,7 @@ def create_function_schemas():
     # Account lookup function
     lookup_account_function = FunctionSchema(
         name="lookup_account_info",
-        description="Look up detailed account information using account ID. Use when customer asks about balance, payments, account status, loan details, interest rate, EMI, or any account information.",
+        description="Look up detailed account information using account ID. Use when customer asks about balance, payments, account status, or loan details.",
         properties={
             "account_id": {
                 "type": "string",
@@ -278,8 +272,8 @@ def create_function_schemas():
             },
             "info_type": {
                 "type": "string",
-                "description": "Type of info requested: balance, payment, status, details, interest, emi, history",
-                "enum": ["balance", "payment", "status", "details", "interest", "emi", "history"]
+                "description": "Type of info requested: balance, payment, status, details",
+                "enum": ["balance", "payment", "status", "details"]
             }
         },
         required=["account_id"]
@@ -310,28 +304,28 @@ async def main():
 
         # Set up system prompt with language detection instructions
         system_prompt = """You are a helpful bilingual voice assistant for a financial services company in India. You can communicate in both Hindi and English based on user preference.
-        
-            Our services include:
-            हमारी सेवाएं / Our Services:
-            - व्यक्तिगत लोन (Personal Loans): ₹50,000 तक का असुरक्षित लोन / Unsecured loans up to ₹50,000
-            - व्यापारिक लोन (Business Loans): व्यापार विस्तार के लिए फंडिंग / Funding for business expansion  
-            - ऋण समेकन (Debt Consolidation): कई ऋणों को एक भुगतान में मिलाना / Combine multiple debts into one payment
-            
-            Available demo accounts: demo123 (Rajesh Kumar), biz456 (Priya's Fashion Store), consol789 (Amit Singh), new890 (Sunita Patel)
-            
-            CRITICAL REAL-TIME INSTRUCTIONS:
-            - ALWAYS respond in maximum 8-10 words ONLY for natural conversation flow
-            - Respond in the same language the user speaks (Hindi or English)
-            - For Hindi speakers, use familiar terms like "लोन", "ब्याज दर", "किस्त"
-            - When someone shows interest, use capture_lead_info function
-            - For account queries, use lookup_account_info function
-            - Be respectful and use "जी", "आप" in Hindi
-            - Keep responses extremely brief for real-time voice delivery
-            
-            When users express interest in loans, immediately call capture_lead_info to get the loan_type, name, email and phone number.
-            When users ask about account information, call lookup_account_info.
-            Always detect the user's language and respond in the same language.
-        """
+
+Our services include:
+हमारी सेवाएं / Our Services:
+- व्यक्तिगत लोन (Personal Loans): ₹50,000 तक का असुरक्षित लोन / Unsecured loans up to ₹50,000
+- व्यापारिक लोन (Business Loans): व्यापार विस्तार के लिए फंडिंग / Funding for business expansion  
+- ऋण समेकन (Debt Consolidation): कई ऋणों को एक भुगतान में मिलाना / Combine multiple debts into one payment
+
+Available demo accounts: demo123 (Rajesh Kumar), biz456 (Priya's Fashion Store), consol789 (Amit Singh), new890 (Sunita Patel)
+
+CRITICAL REAL-TIME INSTRUCTIONS:
+- ALWAYS respond in maximum 8-10 words ONLY for natural conversation flow
+- Respond in the same language the user speaks (Hindi or English)
+- For Hindi speakers, use familiar terms like "लोन", "ब्याज दर", "किस्त"
+- When someone shows interest, use capture_lead_info function
+- For account queries, use lookup_account_info function
+- Be respectful and use "जी", "आप" in Hindi
+- Keep responses extremely brief for real-time voice delivery
+
+When users express interest in loans, immediately call capture_lead_info.
+When users ask about account information, call lookup_account_info.
+Always detect the user's language and respond in the same language.
+"""
 
         # LLM Context with functions
         context = OpenAILLMContext(
@@ -349,16 +343,12 @@ async def main():
         # CRITICAL: Create context aggregator for proper conversation flow
         context_aggregator = llm.create_context_aggregator(context)
 
-        # Function Call Handler:
-        # Register function handlers using the modern approach
-        # This async function is triggered automatically when the LLM calls the `capture_lead_info` tool.
-        # It unpacks arguments from the LLM, runs custom business logic (e.g., storing the lead in a DB),
-        # and uses `result_callback` to return the result back to the LLM for continuation of the conversation.
+        # NEW: Register function handlers using the modern approach
         async def handle_capture_lead(params: FunctionCallParams):
             """Modern function call handler for lead capture"""
             try:
-                result = await business_logic.capture_lead_info(**params.arguments) #The arguments for the function got from FunctionCallParams.
-                await params.result_callback(result) # call to pass the output back into the LLM context
+                result = await business_logic.capture_lead_info(**params.arguments)
+                await params.result_callback(result)
             except Exception as e:
                 logger.error(f"Error in capture_lead_info: {e}")
                 await params.result_callback("Sorry, there was an error capturing your information.")
@@ -440,7 +430,7 @@ async def main():
             llm,  # LLM response with function calling
             tts,  # Text to speech
             context_aggregator.assistant(),  # Add assistant response to context
-            transport.output(),  # Audio output to user
+            transport.output()  # Audio output to user
         ])
 
         # Pipeline task
