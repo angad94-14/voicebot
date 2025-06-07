@@ -1,46 +1,46 @@
 [
   {
-    "name": "Angad",
-    "phone": "98230590",
-    "loan_type": "Personal Loan",
-    "email": "AngadBashani@Gmail.com",
-    "loan_amount": 50000,
-    "language": "English",
-    "timestamp": "2025-06-04T17:21:50.726158",
-    "status": "new",
-    "session_id": "session_20250604_172054"
-  },
-  {
-    "name": "Angad",
-    "phone": "98230590",
-    "loan_type": "Business Loan",
-    "email": "angadbashani@gmail.com",
-    "loan_amount": 50000,
-    "language": "English",
-    "timestamp": "2025-06-05T10:35:40.229088",
-    "status": "new",
-    "session_id": "session_20250605_103400"
-  },
-  {
     "name": "Angad Bashani",
     "phone": "9823005900",
-    "loan_type": "Business Loan",
+    "loan_type": "Business",
     "email": "",
     "loan_amount": 50000,
-    "language": "English",
-    "timestamp": "2025-06-05T16:37:53.276509",
+    "language": "Hindi",
+    "timestamp": "2025-06-05T18:59:58.004505",
     "status": "new",
-    "session_id": "session_20250605_163603"
+    "session_id": "session_20250605_185854"
   },
   {
-    "name": "अंगद साहनी",
-    "phone": "98230590500",
-    "loan_type": "Personal",
-    "email": "अंगदबसानी@gmail.com",
+    "name": "अर्पित",
+    "phone": "1234567890",
+    "loan_type": "personal",
+    "email": "",
     "loan_amount": 50000,
     "language": "Hindi",
-    "timestamp": "2025-06-05T18:04:05.232724",
+    "timestamp": "2025-06-06T10:06:16.630293",
     "status": "new",
-    "session_id": "session_20250605_180315"
+    "session_id": "session_20250606_100317"
+  },
+  {
+    "name": "Angad Bhashani",
+    "phone": "9823005900",
+    "loan_type": "वैयक्तिक कर्ज",
+    "email": "angad bhashani at gmail.com",
+    "loan_amount": 50000,
+    "language": "Marathi",
+    "timestamp": "2025-06-06T16:51:42.865305",
+    "status": "new",
+    "session_id": "session_20250606_165055"
+  },
+  {
+    "name": "अंगद बशानी",
+    "phone": "9823005900",
+    "loan_type": "पर्सनल लोन",
+    "email": "angadbhashaniya@gmail.com",
+    "loan_amount": 50000,
+    "language": "Marathi",
+    "timestamp": "2025-06-06T18:30:31.831361",
+    "status": "new",
+    "session_id": "session_20250606_182926"
   }
 ]

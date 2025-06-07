@@ -11,9 +11,9 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.services.deepgram import DeepgramSTTService
-from deepgram import LiveOptions
+from pipecat.services.google.stt import GoogleSTTService
 from pipecat.services.google.tts import GoogleTTSService, Language
+from pipecat.services.openai.stt import OpenAISTTService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.services.daily import DailyParams, DailyTransport
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class LoanBusinessLogic:
     """
     Simple class to handle business logic - NO FrameProcessor inheritance!
-    Returns responses in English - LLM will translate to Hindi.
+    Returns responses in English - LLM will translate to Marathi.
     """
 
     def __init__(self):
@@ -122,7 +122,7 @@ class LoanBusinessLogic:
             }
         }
 
-    # Function implementations - all return English, LLM translates to Hindi
+    # Function implementations - all return English, LLM translates to Marathi
     async def capture_lead_info(self, name: str, phone: str, loan_type: str, email: str = "", loan_amount: float = 0):
         """Function called by OpenAI when user wants to apply for loan - Returns English"""
         try:
@@ -132,7 +132,7 @@ class LoanBusinessLogic:
                 "loan_type": loan_type,
                 "email": email,
                 "loan_amount": loan_amount,
-                "language": "Hindi",
+                "language": "Marathi",
                 "timestamp": datetime.now().isoformat(),
                 "status": "new",
                 "session_id": self.session_id
@@ -163,7 +163,7 @@ class LoanBusinessLogic:
             customer = account["customer_info"]
             loan = account["loan_details"]
 
-            # Return info in English - LLM will translate to Hindi
+            # Return info in English - LLM will translate to Marathi
             if info_type == "balance":
                 return f"Hello {customer['name'].split()[0]}, your current balance is ₹{loan['current_balance']:,}."
             elif info_type == "payment":
@@ -276,7 +276,7 @@ async def main():
     """Main function to set up and run the real-time voice agent"""
 
     # Environment check
-    required_env_vars = ["OPENAI_API_KEY"]
+    required_env_vars = ["OPENAI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"]
     for var in required_env_vars:
         if not os.getenv(var):
             logger.error(f"Missing required environment variable: {var}")
@@ -289,43 +289,43 @@ async def main():
         # Create function schemas
         tools = create_function_schemas()
 
-        # Set up system prompt - Instructs to ALWAYS respond in Hindi
-        system_prompt = """You are राज (Raj), a friendly loan advisor at a financial services company in India. You're having a phone conversation with customers.
+        # Set up system prompt - Instructs to ALWAYS respond in Marathi
+        system_prompt = """You are संदीप (Sandeep), a friendly loan advisor at a financial services company in India. You're having a phone conversation with customers.
 
 PERSONALITY:
 - Warm, approachable, and genuinely helpful
-- Use conversational Hindi with common English terms (लोन, EMI, इंटरेस्ट रेट)
+- Use conversational Marathi with common English terms (लोन, EMI, इंटरेस्ट रेट)
 - Sound natural and caring
-- Use respectful language ("जी", "आप")
+- Use respectful language ("साहेब", "ताई", "आपण")
 
 SERVICES:
-- Personal Loans: Quick loans up to ₹50,000
-- Business Loans: Help businesses grow
-- Debt Consolidation: Combine multiple loans into one
+- Personal Loans (वैयक्तिक कर्ज): Quick loans up to ₹50,000
+- Business Loans (व्यवसाय कर्ज): Help businesses grow
+- Debt Consolidation (कर्ज एकत्रीकरण): Combine multiple loans into one
 
 DEMO ACCOUNTS:
-demo123 (Rajesh), biz456 (Priya's Store), consol789 (Amit), new890 (Sunita)
+demo123 (राजेश), biz456 (प्रिया स्टोअर), consol789 (अमित), new890 (सुनीता)
 
 CRITICAL INSTRUCTIONS:
-- ALWAYS respond in Hindi, regardless of input language
+- ALWAYS respond in Marathi (मराठी), regardless of input language
 - Keep ALL responses under 15 words
 - Sound conversational, not robotic
-- Use natural fillers ("तो", "देखिए", "अच्छा")
+- Use natural fillers ("म्हणजे", "बघा", "हो")
 - Ask one thing at a time
-- When looking up info say "एक मिनट" or "देखता हूं"
+- When looking up info say "एक मिनिट" or "बघतो"
 - After function calls, just deliver the result - don't repeat
-- Even if user speaks English, ALWAYS respond in Hindi
+- Even if user speaks English or Hindi, ALWAYS respond in Marathi
 
 CONVERSATION FLOW:
-- Greeting: "नमस्ते! मैं राज, QuickLoans से बोल रहा हूं"
-- For loans: "जी बिल्कुल! कौन सा लोन चाहिए?"
+- Greeting: "नमस्कार! मी संदीप, QuickLoans मधून बोलतोय"
+- For loans: "नक्की! कोणते कर्ज हवे आहे?"
 - Get details one by one
-- For account lookup: "एक मिनट, देखता हूं"
-- End with: "और कुछ मदद चाहिए?"
+- For account lookup: "एक मिनिट, बघतो"
+- End with: "अजून काही मदत हवी का?"
 
-IMPORTANT: You will receive function results in English, but you MUST translate and respond in Hindi.
+IMPORTANT: You will receive function results in English, but you MUST translate and respond in Marathi.
 
-Remember: Natural conversation in Hindi only!"""
+Remember: Natural conversation in Marathi only!"""
 
         # LLM Context with functions
         context = OpenAILLMContext(
@@ -368,55 +368,73 @@ Remember: Natural conversation in Hindi only!"""
 
         logger.info("✅ OpenAI LLM configured with context aggregator and functions")
 
-        # STT Service - Multi-language support for Hindi/English
+        # STT Service - Google STT with Marathi and Indian English support
         stt = None
-        if os.getenv("DEEPGRAM_API_KEY"):
-            stt = DeepgramSTTService(
-                api_key=os.getenv("DEEPGRAM_API_KEY"),
-                live_options=LiveOptions(
-                    model="nova-2-general",
-                    language="hi",  # Multi-language for Hindi/English mix
-                    smart_format=True,
-                    vad_events=True,
-                    interim_results=True
-                )
-            )
-            logger.info("✅ Deepgram STT configured for multi-language (Hindi/English)")
-        else:
-            logger.error("❌ Deepgram API key required")
-            return
+        if os.getenv("OPENAI_API_KEY"):
+            stt = OpenAISTTService(
+            model="gpt-4o-transcribe",
+            api_key=os.getenv("OPENAI_API_KEY"),
+            language=Language.MR,
+            prompt="You are a multilingual voice agent. You may hear English or Marathi. Transcribe clearly and accurately. Preserve technical terms, code words, and format numbers as digits."
 
-        # TTS Service - Hindi Chirp voice
+        )
+            logger.info("✅ OpenAI STT configured for Marathi and Indian English")
+        else:
+            logger.error("❌ OpenAI credentials required for STT")
+            return
+        # if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        #     stt = GoogleSTTService(
+        #         location="global",
+        #         credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+        #         sample_rate=16000,
+        #         params=GoogleSTTService.InputParams(
+        #             languages=Language.EN,  # Marathi and Indian English
+        #             model="latest_long",  # or "latest_long" for better accuracy
+        #             enable_automatic_punctuation=False,
+        #             enable_interim_results=True,  # Keep this for real-time transcription
+        #             enable_voice_activity_events=False,  # Try disabling VAD events
+        #             profanity_filter=False  # Explicitly set to avoid issues
+        #         )
+        #     )
+        #     logger.info("✅ Google STT configured for Marathi and Indian English")
+        # else:
+        #     logger.error("❌ Google Cloud credentials required for STT")
+        #     return
+
+        # TTS Service - Marathi Chirp voice
         tts = None
         if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
             tts = GoogleTTSService(
                 credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-                voice_id="hi-IN-Chirp3-HD-Achird",  # Hindi male Chirp voice
+                voice_id="mr-IN-Chirp3-HD-Achird",  # Marathi Chirp voice
                 params=GoogleTTSService.InputParams(
-                    language=Language.HI  # Hindi language
+                    language=Language.MR  # Marathi language
                 )
             )
-            logger.info("✅ Google Hindi Chirp TTS configured")
+            logger.info("✅ Google Marathi Chirp TTS configured")
         else:
-            logger.error("❌ Google Cloud credentials required")
+            logger.error("❌ Google Cloud credentials required for TTS")
             return
 
         # VAD Configuration
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=16000,
-            params=VADParams()
+            params=VADParams(
+                # confidence=0.5,
+                # start_secs=250,
+                # stop_secs=100
+            )
         )
 
         # Transport
         transport = DailyTransport(
             room_url=os.getenv("DAILY_ROOM_URL") or "https://yourdomain.daily.co/simple-voice",
             token=os.getenv("DAILY_TOKEN"),
-            bot_name="राज - लोन सलाहकार",
+            bot_name="संदीप - कर्ज सल्लागार",
             params=DailyParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 transcription_enabled=False,
-                vad_enabled=True,
                 vad_analyzer=vad_analyzer
             )
         )
@@ -424,10 +442,10 @@ Remember: Natural conversation in Hindi only!"""
         # SIMPLE PIPELINE - No custom FrameProcessor needed!
         pipeline = Pipeline([
             transport.input(),  # Audio input from user
-            stt,  # Speech to text (multi-language)
+            stt,  # Speech to text (Marathi/Indian English)
             context_aggregator.user(),  # Add user message to context
             llm,  # LLM response with function calling
-            tts,  # Text to speech (Hindi)
+            tts,  # Text to speech (Marathi)
             context_aggregator.assistant(),  # Add assistant response to context
             transport.output(),  # Audio output to user
         ])
@@ -445,8 +463,11 @@ Remember: Natural conversation in Hindi only!"""
         # Run the pipeline
         runner = PipelineRunner()
 
-        logger.info("🎙️ Real-Time Hindi Voice Loan Assistant Ready!")
-        logger.info("🌐 STT: Multi-language (Hindi/English input)")
+        logger.info("🎙️ Real-Time Marathi Voice Loan Assistant Ready!")
+        logger.info("🌐 STT: Google (Marathi + Indian English)")
+        logger.info("🗣️ TTS: Google Marathi Chirp (mr-IN-Chirp3-HD-Achird)")
+        logger.info("💬 Processing: English internally, Marathi responses")
+        logger.info("⚡ Features: Natural Marathi dialogue, Function calling, Lead capture")
 
         await runner.run(task)
 
