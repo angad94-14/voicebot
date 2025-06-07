@@ -29,6 +29,9 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Configuration option - set to "openai" or "google"
+STT_PROVIDER = os.getenv("STT_PROVIDER", "openai")  # Default to OpenAI
+
 
 class LoanBusinessLogic:
     """
@@ -272,15 +275,62 @@ def create_function_schemas():
     return tools
 
 
+def create_stt_service(stt_provider: str):
+    """Create STT service based on provider choice"""
+
+    if stt_provider.lower() == "openai":
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ValueError("OpenAI API key required for OpenAI STT")
+
+        stt = OpenAISTTService(
+            model="whisper-1",  # Standard Whisper model
+            api_key=os.getenv("OPENAI_API_KEY"),
+            language=Language.MR,  # Set Marathi as primary language
+            prompt="You are a multilingual voice agent for a financial services company in India. You will hear conversations in Marathi, English, or Hindi. Common loan-related terms: कर्ज (loan), EMI, हप्ता (installment), खाता (account), शिल्लक (balance). Transcribe accurately preserving the original language. Format numbers as digits. Account IDs may include: demo123, biz456, consol789, new890."
+        )
+        logger.info("✅ OpenAI STT (Whisper) configured for multilingual support")
+        return stt
+
+    elif stt_provider.lower() == "google":
+        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            raise ValueError("Google Cloud credentials required for Google STT")
+
+        stt = GoogleSTTService(
+            location="global",
+            credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+            sample_rate=16000,
+            params=GoogleSTTService.InputParams(
+                languages=[Language.MR, Language.EN_IN],  # Marathi and Indian English
+                model="latest_long",
+                enable_automatic_punctuation=False,
+                enable_interim_results=True,
+                enable_voice_activity_events=False,
+                profanity_filter=False
+            )
+        )
+        logger.info("✅ Google STT configured for Marathi and Indian English")
+        return stt
+
+    else:
+        raise ValueError(f"Unsupported STT provider: {stt_provider}. Use 'openai' or 'google'")
+
+
 async def main():
     """Main function to set up and run the real-time voice agent"""
 
-    # Environment check
-    required_env_vars = ["OPENAI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"]
-    for var in required_env_vars:
-        if not os.getenv(var):
-            logger.error(f"Missing required environment variable: {var}")
-            return
+    # Log STT provider choice
+    logger.info(f"🎤 STT Provider selected: {STT_PROVIDER}")
+
+    # Environment check based on STT provider
+    if STT_PROVIDER.lower() == "openai":
+        required_env_vars = ["OPENAI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"]
+    else:
+        required_env_vars = ["GOOGLE_APPLICATION_CREDENTIALS"]
+
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        return
 
     try:
         # Create business logic handler - NO FrameProcessor inheritance!
@@ -308,13 +358,14 @@ demo123 (राजेश), biz456 (प्रिया स्टोअर), conso
 
 CRITICAL INSTRUCTIONS:
 - ALWAYS respond in Marathi (मराठी), regardless of input language
+- You will receive transcriptions in the original language spoken (English, Hindi, or Marathi)
+- Even if the customer speaks in English or Hindi, ALWAYS respond in Marathi
 - Keep ALL responses under 15 words
 - Sound conversational, not robotic
 - Use natural fillers ("म्हणजे", "बघा", "हो")
 - Ask one thing at a time
 - When looking up info say "एक मिनिट" or "बघतो"
 - After function calls, just deliver the result - don't repeat
-- Even if user speaks English or Hindi, ALWAYS respond in Marathi
 
 CONVERSATION FLOW:
 - Greeting: "नमस्कार! मी संदीप, QuickLoans मधून बोलतोय"
@@ -368,38 +419,12 @@ Remember: Natural conversation in Marathi only!"""
 
         logger.info("✅ OpenAI LLM configured with context aggregator and functions")
 
-        # STT Service - Google STT with Marathi and Indian English support
-        stt = None
-        if os.getenv("OPENAI_API_KEY"):
-            stt = OpenAISTTService(
-            model="gpt-4o-transcribe",
-            api_key=os.getenv("OPENAI_API_KEY"),
-            language=Language.MR,
-            prompt="You are a multilingual voice agent. You may hear English or Marathi. Transcribe clearly and accurately. Preserve technical terms, code words, and format numbers as digits."
-
-        )
-            logger.info("✅ OpenAI STT configured for Marathi and Indian English")
-        else:
-            logger.error("❌ OpenAI credentials required for STT")
+        # STT Service - Create based on provider choice
+        try:
+            stt = create_stt_service(STT_PROVIDER)
+        except Exception as e:
+            logger.error(f"❌ Failed to create STT service: {e}")
             return
-        # if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        #     stt = GoogleSTTService(
-        #         location="global",
-        #         credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-        #         sample_rate=16000,
-        #         params=GoogleSTTService.InputParams(
-        #             languages=Language.EN,  # Marathi and Indian English
-        #             model="latest_long",  # or "latest_long" for better accuracy
-        #             enable_automatic_punctuation=False,
-        #             enable_interim_results=True,  # Keep this for real-time transcription
-        #             enable_voice_activity_events=False,  # Try disabling VAD events
-        #             profanity_filter=False  # Explicitly set to avoid issues
-        #         )
-        #     )
-        #     logger.info("✅ Google STT configured for Marathi and Indian English")
-        # else:
-        #     logger.error("❌ Google Cloud credentials required for STT")
-        #     return
 
         # TTS Service - Marathi Chirp voice
         tts = None
@@ -420,9 +445,7 @@ Remember: Natural conversation in Marathi only!"""
         vad_analyzer = SileroVADAnalyzer(
             sample_rate=16000,
             params=VADParams(
-                # confidence=0.5,
-                # start_secs=250,
-                # stop_secs=100
+                # Default parameters
             )
         )
 
@@ -442,7 +465,7 @@ Remember: Natural conversation in Marathi only!"""
         # SIMPLE PIPELINE - No custom FrameProcessor needed!
         pipeline = Pipeline([
             transport.input(),  # Audio input from user
-            stt,  # Speech to text (Marathi/Indian English)
+            stt,  # Speech to text (OpenAI or Google based on config)
             context_aggregator.user(),  # Add user message to context
             llm,  # LLM response with function calling
             tts,  # Text to speech (Marathi)
@@ -463,11 +486,9 @@ Remember: Natural conversation in Marathi only!"""
         # Run the pipeline
         runner = PipelineRunner()
 
-        logger.info("🎙️ Real-Time Marathi Voice Loan Assistant Ready!")
-        logger.info("🌐 STT: Google (Marathi + Indian English)")
-        logger.info("🗣️ TTS: Google Marathi Chirp (mr-IN-Chirp3-HD-Achird)")
-        logger.info("💬 Processing: English internally, Marathi responses")
-        logger.info("⚡ Features: Natural Marathi dialogue, Function calling, Lead capture")
+        logger.info("🎙️ Real-Time Voice Loan Assistant Ready!")
+        logger.info(
+            f"🌐 STT: {STT_PROVIDER.upper()} ({'Whisper' if STT_PROVIDER.lower() == 'openai' else 'Cloud Speech-to-Text'})")
 
         await runner.run(task)
 
